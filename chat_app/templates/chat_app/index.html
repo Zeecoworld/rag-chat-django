@@ -1,0 +1,264 @@
+{% extends 'chat_app/base.html' %}
+
+{% block title %}Document Upload - RAG Chat{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-area {
+        border: 3px dashed #ccc;
+        border-radius: 20px;
+        padding: 60px 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: white;
+        margin-bottom: 2rem;
+    }
+    
+    .upload-area:hover {
+        border-color: var(--primary-color);
+        background: #f8f9ff;
+    }
+    
+    .upload-area.dragover {
+        border-color: var(--secondary-color);
+        background: #e8f5e9;
+    }
+    
+    .document-card {
+        transition: transform 0.3s, box-shadow 0.3s;
+        cursor: pointer;
+        margin-bottom: 1.5rem;
+    }
+    
+    .document-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(0,0,0,0.25);
+    }
+    
+    .file-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+    
+    .processing-badge {
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="text-white mb-4">
+            <i class="fas fa-file-upload"></i> Upload Your Documents
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="upload-area" id="uploadArea">
+                    <i class="fas fa-cloud-upload-alt file-icon text-primary"></i>
+                    <h4>Drag & Drop Your Files Here</h4>
+                    <p class="text-muted">or click to browse</p>
+                    <p class="text-muted small">
+                        Supported: PDF, DOCX, CSV, TXT, Images (JPG, PNG) - Max 10MB
+                    </p>
+                    <input type="file" id="fileInput" class="d-none" 
+                           accept=".pdf,.docx,.doc,.csv,.txt,.jpg,.jpeg,.png">
+                    {% csrf_token %}
+                </div>
+                
+                <div id="uploadProgress" class="d-none">
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 100%"></div>
+                    </div>
+                    <p class="text-center mt-2">Processing document...</p>
+                </div>
+                
+                <div id="alertContainer"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <h2 class="text-white mb-3">
+            <i class="fas fa-folder-open"></i> Your Documents
+        </h2>
+    </div>
+</div>
+
+<div class="row" id="documentsContainer">
+    {% for document in documents %}
+    <div class="col-md-6 col-lg-4">
+        <div class="card document-card" onclick="window.location.href='{% url 'chat_app:document_detail' document.id %}'">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        {% if document.file_type == 'pdf' %}
+                            <i class="fas fa-file-pdf text-danger" style="font-size: 2rem;"></i>
+                        {% elif document.file_type == 'docx' or document.file_type == 'doc' %}
+                            <i class="fas fa-file-word text-primary" style="font-size: 2rem;"></i>
+                        {% elif document.file_type == 'csv' %}
+                            <i class="fas fa-file-csv text-success" style="font-size: 2rem;"></i>
+                        {% elif document.file_type == 'txt' %}
+                            <i class="fas fa-file-alt text-secondary" style="font-size: 2rem;"></i>
+                        {% else %}
+                            <i class="fas fa-file-image text-info" style="font-size: 2rem;"></i>
+                        {% endif %}
+                    </div>
+                    <div>
+                        {% if document.processed %}
+                            <span class="badge bg-success">
+                                <i class="fas fa-check"></i> Ready
+                            </span>
+                        {% else %}
+                            <span class="badge bg-warning processing-badge">
+                                <i class="fas fa-spinner fa-spin"></i> Processing
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <h5 class="card-title">{{ document.title }}</h5>
+                <p class="text-muted small mb-2">
+                    <i class="fas fa-calendar"></i> {{ document.uploaded_at|date:"M d, Y" }}
+                </p>
+                
+                {% if document.processed %}
+                <p class="text-muted small mb-0">
+                    <i class="fas fa-puzzle-piece"></i> {{ document.chunk_count }} chunks
+                </p>
+                {% endif %}
+                
+                <div class="mt-3">
+                    <button class="btn btn-sm btn-primary w-100" onclick="event.stopPropagation(); window.location.href='{% url 'chat_app:document_detail' document.id %}'">
+                        <i class="fas fa-comments"></i> Chat with Document
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="fas fa-inbox text-muted" style="font-size: 4rem;"></i>
+                <h4 class="mt-3 text-muted">No Documents Yet</h4>
+                <p class="text-muted">Upload your first document to get started!</p>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const alertContainer = document.getElementById('alertContainer');
+    
+    // Click to browse
+    uploadArea.addEventListener('click', () => fileInput.click());
+    
+    // Drag and drop
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+    
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        
+        if (e.dataTransfer.files.length > 0) {
+            handleFile(e.dataTransfer.files[0]);
+        }
+    });
+    
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFile(e.target.files[0]);
+        }
+    });
+    
+    function handleFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Show progress
+        uploadProgress.classList.remove('d-none');
+        uploadArea.classList.add('d-none');
+        
+        fetch('{% url "chat_app:upload_document" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            uploadProgress.classList.add('d-none');
+            uploadArea.classList.remove('d-none');
+            
+            if (data.success) {
+                showAlert('success', 'Document uploaded and processed successfully!');
+                // Reload page after 1 second
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showAlert('danger', data.error || 'Upload failed');
+            }
+        })
+        .catch(error => {
+            uploadProgress.classList.add('d-none');
+            uploadArea.classList.remove('d-none');
+            showAlert('danger', 'An error occurred during upload');
+            console.error('Error:', error);
+        });
+    }
+    
+    function showAlert(type, message) {
+        alertContainer.innerHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+    }
+    
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+</script>
+{% endblock %}
