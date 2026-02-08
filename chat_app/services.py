@@ -1,5 +1,5 @@
 import cohere
-import pinecone
+from pinecone import Pinecone
 from django.conf import settings
 from typing import List, Tuple, Dict
 import PyPDF2
@@ -17,12 +17,11 @@ class DocumentProcessor:
             # Initialize Cohere
             self.cohere_client = cohere.Client(settings.COHERE_API_KEY)
             
-            # Initialize Pinecone
-            pinecone.init(
-                api_key=settings.PINECONE_API_KEY,
-                environment=settings.PINECONE_ENVIRONMENT
-            )
-            self.index = pinecone.Index(settings.PINECONE_INDEX_NAME)
+            # Initialize Pinecone (NEW API)
+            self.pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+            self.index = self.pc.Index(settings.PINECONE_INDEX_NAME)
+            
+            print("✅ DocumentProcessor initialized successfully")
             
         except Exception as e:
             print(f"❌ Failed to initialize DocumentProcessor: {e}")
@@ -230,11 +229,11 @@ class ChatService:
         try:
             self.cohere_client = cohere.Client(settings.COHERE_API_KEY)
             
-            pinecone.init(
-                api_key=settings.PINECONE_API_KEY,
-                environment=settings.PINECONE_ENVIRONMENT
-            )
-            self.index = pinecone.Index(settings.PINECONE_INDEX_NAME)
+            # Initialize Pinecone (NEW API)
+            self.pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+            self.index = self.pc.Index(settings.PINECONE_INDEX_NAME)
+            
+            print("✅ ChatService initialized successfully")
             
         except Exception as e:
             print(f"❌ Failed to initialize ChatService: {e}")

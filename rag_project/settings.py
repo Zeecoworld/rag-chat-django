@@ -95,7 +95,7 @@ COHERE_API_KEY = os.getenv('COHERE_API_KEY')
 # Pinecone Settings
 PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
 PINECONE_ENVIRONMENT = os.getenv('PINECONE_ENVIRONMENT')
-PINECONE_INDEX_NAME = os.getenv('PINECONE_INDEX_NAME', 'document-embeddings')
+PINECONE_INDEX_NAME = os.getenv('PINECONE_INDEX_NAME')
 
 # Cloudinary Settings
 CLOUDINARY_CLOUD_NAME = os.getenv('CLOUDINARY_CLOUD_NAME')
