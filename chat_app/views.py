@@ -10,6 +10,7 @@ from .services import DocumentProcessor, ChatService
 from .cloudinary_service import CloudinaryService
 from django.conf import settings
 import json
+import traceback
 
 
 def index(request):
@@ -41,8 +42,16 @@ def upload_document(request):
             }, status=400)
 
         # 2. External Upload (Cloudinary)
-        cloudinary_service = CloudinaryService()
-        cloudinary_url, public_id = cloudinary_service.upload_file(file)
+        try:
+            cloudinary_service = CloudinaryService()
+            cloudinary_url, public_id, resource_type = cloudinary_service.upload_file(file)
+            print(f"✅ Cloudinary upload successful: {cloudinary_url}")
+        except Exception as e:
+            print(f"❌ Cloudinary upload failed: {str(e)}")
+            traceback.print_exc()
+            return JsonResponse({
+                'error': f'Failed to upload to Cloudinary: {str(e)}'
+            }, status=500)
         
         try:
             with transaction.atomic():
@@ -51,6 +60,7 @@ def upload_document(request):
                     file_type=file_extension,
                     cloudinary_url=cloudinary_url,
                     cloudinary_public_id=public_id,
+                    cloudinary_resource_type=resource_type,  # NEW FIELD
                     file_size=file.size
                 )
                 
@@ -97,10 +107,15 @@ def upload_document(request):
             })
 
         except Exception as e:
-            cloudinary_service.delete_file(public_id)
+            # Rollback Cloudinary upload if DB operation fails
+            cloudinary_service.delete_file(public_id, resource_type)
+            print(f"❌ Processing failed, rolled back Cloudinary upload: {str(e)}")
+            traceback.print_exc()
             raise e
 
     except Exception as e:
+        print(f"❌ Upload error: {str(e)}")
+        traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
 
 
@@ -168,7 +183,7 @@ def send_message(request, session_id):
             chat_history
         )
         
-        # Save assistant message (keep 'assistant' for your DB internal logic)
+        # Save assistant message
         assistant_msg = ChatMessage.objects.create(
             session=session,
             role='assistant',
@@ -205,9 +220,12 @@ def delete_document(request, document_id):
         doc_processor = DocumentProcessor()
         doc_processor.delete_document_vectors(str(document.id))
         
-        # Delete from Cloudinary
+        # Delete from Cloudinary (now using stored resource_type)
         cloudinary_service = CloudinaryService()
-        cloudinary_service.delete_file(document.cloudinary_public_id)
+        cloudinary_service.delete_file(
+            document.cloudinary_public_id,
+            document.cloudinary_resource_type  # Use stored resource type
+        )
         
         # Delete from database
         document.delete()
